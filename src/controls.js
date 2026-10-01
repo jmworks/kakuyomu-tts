@@ -10,6 +10,7 @@ const STYLE = `
     background: #333; color: #fff; font-size: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
   }
   button:focus-visible { outline: 3px solid #4c9ffe; outline-offset: 2px; }
+  .settings { width: 32px; height: 32px; margin-right: 8px; font-size: 16px; background: #666; }
   .msg {
     max-width: 280px; padding: 8px 12px; border-radius: 8px;
     background: #333; color: #fff; font-size: 13px; line-height: 1.5;
@@ -19,16 +20,17 @@ const STYLE = `
 
 const MESSAGE_MS = 8000;
 
-export function createControls({ onPlay, onStop }) {
+export function createControls({ onPlay, onStop, onSettings }) {
   const host = document.createElement('div');
   const root = host.attachShadow({ mode: 'closed' });
   root.innerHTML = `
     <style>${STYLE}</style>
     <div class="box">
       <div class="msg" role="status" hidden></div>
-      <button type="button"></button>
+      <button type="button" class="settings" title="読み上げの設定" aria-label="読み上げの設定">⚙</button>
+      <button type="button" class="play"></button>
     </div>`;
-  const button = root.querySelector('button');
+  const button = root.querySelector('.play');
   const msg = root.querySelector('.msg');
   let playing = false;
   let timer = null;
@@ -42,6 +44,7 @@ export function createControls({ onPlay, onStop }) {
   }
 
   button.addEventListener('click', () => (playing ? onStop() : onPlay()));
+  root.querySelector('.settings').addEventListener('click', onSettings);
   setPlaying(false);
   document.body.append(host);
 

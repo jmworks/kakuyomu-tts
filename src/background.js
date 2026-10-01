@@ -164,6 +164,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         .update((s) => onQuery(s, tabId, sender.url, Date.now()))
         .then((result) => sendResponse({ resume: result.resume }));
       return true;
+    case 'openSettings':
+      chrome.runtime.openOptionsPage();
+      sendResponse({});
+      return false;
     case 'player-event':
       handlePlayerEvent(msg);
       sendResponse({});

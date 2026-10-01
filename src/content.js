@@ -14,6 +14,7 @@ let current = null;
 const controls = createControls({
   onPlay: () => play(findStartIndex(paragraphs)),
   onStop: stop,
+  onSettings: () => chrome.runtime.sendMessage({ type: 'openSettings' }),
 });
 
 function highlight(index) {
