@@ -6,6 +6,7 @@ import {
   findEpisodeBody,
   findNextEpisodeUrl,
   findStartIndex,
+  findWork,
 } from '../src/episode.js';
 
 const HTML = readFileSync(new URL('./fixtures/episode.html', import.meta.url), 'utf8');
@@ -66,5 +67,22 @@ describe('findNextEpisodeUrl', () => {
     const doc = load();
     doc.getElementById('contentMain-readNextEpisode').remove();
     expect(findNextEpisodeUrl(doc)).toBeNull();
+  });
+});
+
+describe('findWork', () => {
+  it('URL から作品 ID を、作品ページへのリンクから作品名を取る', () => {
+    const doc = load(`<div id="worksEpisodesEpisodeHeader-closeButton"><a href="/works/1">閉じる</a></div>
+      <h1><a href="/works/1">テスト作品</a></h1><div class="js-episode-body"></div>`);
+    expect(findWork(doc)).toEqual({ workId: '1', title: 'テスト作品' });
+  });
+
+  it('作品名が見つからなければ title は null', () => {
+    expect(findWork(load())).toEqual({ workId: '1', title: null });
+  });
+
+  it('エピソードページ以外では null', () => {
+    const doc = new JSDOM('<p></p>', { url: 'https://kakuyomu.jp/works/1' }).window.document;
+    expect(findWork(doc)).toBeNull();
   });
 });

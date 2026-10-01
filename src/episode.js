@@ -5,6 +5,8 @@ export const SELECTORS = {
   paragraph: 'p',
   blankClass: 'blank',
   nextEpisode: '#contentMain-readNextEpisode',
+  // 作品名は作品ページへのリンクの文字から取る。ヘッダーの「閉じる」ボタンも同じリンクなので除く
+  closeButton: '#worksEpisodesEpisodeHeader-closeButton',
 };
 
 export function findEpisodeBody(doc) {
@@ -36,4 +38,14 @@ export function findStartIndex(paragraphs) {
 export function findNextEpisodeUrl(doc) {
   const href = doc.querySelector(SELECTORS.nextEpisode)?.getAttribute('href');
   return href ? new URL(href, doc.baseURI).href : null;
+}
+
+export function findWork(doc) {
+  const match = new URL(doc.URL).pathname.match(/^\/works\/(\d+)\/episodes\//);
+  if (!match) return null;
+  const workId = match[1];
+  const link = [...doc.querySelectorAll(`a[href$="/works/${workId}"]`)].find(
+    (a) => !a.closest(SELECTORS.closeButton) && a.textContent.trim() !== '',
+  );
+  return { workId, title: link ? link.textContent.trim() : null };
 }
