@@ -9,8 +9,9 @@
 
 ## 前提・合意事項
 
-- 利用環境: Mac + Chrome（作業中に流し聴きする用途）
-- 音声エンジン: VOICEVOX（ユーザーの Mac にインストール済み、`http://127.0.0.1:50021`）
+- GitHub で公開する前提で作る（詳細は「公開に向けた方針」）
+- 想定利用環境: PC の Chrome（作業中に流し聴きする用途）。作者の環境は Mac だが、OS 固有の処理は入れない
+- 音声エンジン: VOICEVOX 互換エンジン。既定は VOICEVOX（`http://127.0.0.1:50021`）、URL は設定で変更可能（AivisSpeech `http://127.0.0.1:10101` など同じ API のエンジンも使えるように）
 - 開始位置: ▶ を押した時点で画面最上部に表示されている段落から。遷移後のエピソードは冒頭から
 - 読み位置は拡張側で保持しない。既読管理はカクヨム本体に任せる（実際にタブを遷移させるので、ログイン中ならカクヨム側の既読が更新される）
 - 誤読対策は今回のスコープ外。必要になったら VOICEVOX アプリの「読み方＆アクセント辞書」で対応する
@@ -21,6 +22,19 @@
 - 拡張独自の読み辞書
 - VOICEVOX 以外の音声エンジン（Web Speech API へのフォールバック含む）
 - iPhone 等モバイル対応
+- UI の多言語化（カクヨム利用者向けなので日本語のみ）
+
+## 公開に向けた方針
+
+- ライセンス: MIT（`LICENSE`）
+- 名称・表記: カクヨム（株式会社KADOKAWA）とは無関係の非公式ツールであることを README 冒頭と拡張の説明文に明記する。公式と誤認させるロゴ・配色は使わない
+- 配布: まず GitHub Releases に zip を置き「パッケージ化されていない拡張機能を読み込む」で導入する手順を README に書く。Chrome Web Store 申請は後で判断するが、審査に通る作りにしておく（リモートコード読み込みなし、権限は最小限、外部送信なし）
+- プライバシー: 本文テキストはユーザーが指定したローカルの音声エンジンにだけ送る。外部サーバーへの送信・解析・トラッキングは一切しない。README に明記する
+- 著作物: リポジトリにカクヨムの実作品本文を含めない（テストは構造だけを模した合成 HTML）
+- 音声のクレジット: 拡張は音声ファイルを保存・配布しないため、個人の視聴には通常クレジット不要。ただし話者ごとに利用規約があるので、README で VOICEVOX と各キャラクターの規約へのリンクを案内する。ポップアップの話者名の横に「VOICEVOX:{話者名}」を表示する
+- README（日本語）: 何ができるか（GIF）、必要なもの（Chrome と VOICEVOX）、導入手順、使い方、設定、よくあるトラブル（VOICEVOX 未起動、ポート違い、誤読の直し方＝VOICEVOX の辞書）、非公式である旨、ライセンス
+- CI: GitHub Actions で push / PR 時に `npm test` を実行
+- DOM 変更への備え: カクヨムのセレクタは `src/episode.js` の先頭に定数としてまとめ、壊れたときに直す場所を 1 か所にする。本文コンテナが見つからない場合は「ページ構造が変わった可能性があります」と表示する
 
 ## カクヨムのDOM（2026-10-01 実ページで確認）
 
@@ -39,13 +53,13 @@ Chrome 拡張（Manifest V3）、ビルド不要の素の JavaScript（ES module
 
 | ファイル | 役割 |
 |---|---|
-| `manifest.json` | content script を `https://kakuyomu.jp/works/*/episodes/*` に注入。`host_permissions: ["http://127.0.0.1:50021/*"]`、`permissions: ["storage", "offscreen"]` |
+| `manifest.json` | content script を `https://kakuyomu.jp/works/*/episodes/*` に注入。`host_permissions: ["http://127.0.0.1/*", "http://localhost/*"]`（ポート違いのエンジンに対応するため。match pattern がポートを無視することは実装時に検証する）、`permissions: ["storage", "offscreen"]` |
 | `src/content.js` | ページ内UI（右下の ▶/■ ボタン、エラー表示）、段落抽出、開始段落判定、読み上げ中段落のハイライトと自動スクロール、次エピソードへの遷移、ページロード時の自動再開 |
 | `src/episode.js` | DOM 純粋関数群（`extractParagraphs`, `findStartIndex`, `findNextEpisodeUrl`）。content.js から import し、テスト対象にする |
 | `src/background.js` | Service worker。VOICEVOX 呼び出し（`/audio_query` → `/synthesis`）、1段落先の先読み、offscreen document の生成と再生指示、再生状態の管理 |
 | `src/voicevox.js` | VOICEVOX API クライアント（`getSpeakers`, `synthesize(text, speaker, speed)`） |
 | `src/offscreen.html` / `offscreen.js` | WAV を `Audio` で再生し、終了を background に通知 |
-| `src/popup.html` / `popup.js` | 話者選択（`/speakers` から取得）、速度（`speedScale`）設定 |
+| `src/popup.html` / `popup.js` | 話者選択（`/speakers` から取得）、速度（`speedScale`）設定、エンジン URL 設定と接続テスト |
 
 VOICEVOX との通信を background に集約する理由: カクヨムのオリジンから `127.0.0.1:50021` へ直接 fetch すると CORS で拒否される可能性が高い。拡張コンテキストは `host_permissions` で CORS を回避できる。
 再生を offscreen に置く理由: 再生処理を拡張コンテキスト内で完結させ、ページ側の制約に影響されないようにする。
@@ -65,12 +79,12 @@ content script はページ読み込み時点で「再生中」かを判定す�
 
 ## 保存データ
 
-- `chrome.storage.sync`: `{speaker: number, speed: number}`（初期値: speaker = VOICEVOX の先頭話者のスタイル ID、speed = 1.0）
+- `chrome.storage.sync`: `{engineUrl: string, speaker: number, speed: number}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = エンジンの先頭話者のスタイル ID、speed = 1.0）
 - `chrome.storage.session`: `{playingTabId: number | null}`（ブラウザ終了で消える）
 
 ## エラー処理
 
-- VOICEVOX に接続できない（fetch 失敗 / タイムアウト）: 再生を停止し、ページ右下に「VOICEVOX を起動してください」を表示
+- 音声エンジンに接続できない（fetch 失敗 / タイムアウト）: 再生を停止し、ページ右下に「VOICEVOX（音声エンジン）に接続できません。起動しているか、設定の URL を確認してください」を表示
 - 本文コンテナが見つからない: ▶ ボタンを出さない
 - 1段落の合成に失敗: 再生停止してエラー表示（スキップはしない。原因が見えなくなるため）
 
