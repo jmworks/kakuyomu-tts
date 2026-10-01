@@ -24,6 +24,21 @@ describe('pickVoice', () => {
   it('指定がネットワーク音声なら使わない', () => {
     expect(pickVoice(voices, 'Google 日本語')).toBe('Kyoko');
   });
+  it('指定が無ければ Kyoko など標準的な声を優先する（Mac の Eddy などより先）', () => {
+    const mac = [
+      { voiceName: 'Eddy (Japanese (Japan))', lang: 'ja-JP', remote: false },
+      { voiceName: 'Grandma (Japanese (Japan))', lang: 'ja-JP', remote: false },
+      { voiceName: 'Kyoko', lang: 'ja-JP', remote: false },
+    ];
+    expect(pickVoice(mac, null)).toBe('Kyoko');
+  });
+  it('Windows の Microsoft Haruka なども標準的な声として優先する', () => {
+    const win = [
+      { voiceName: 'Other Voice', lang: 'ja-JP', remote: false },
+      { voiceName: 'Microsoft Haruka - Japanese (Japan)', lang: 'ja-JP', remote: false },
+    ];
+    expect(pickVoice(win, null)).toBe('Microsoft Haruka - Japanese (Japan)');
+  });
   it('日本語ローカル音声が無ければ null', () => {
     expect(pickVoice([voices[0], voices[1]], null)).toBeNull();
   });

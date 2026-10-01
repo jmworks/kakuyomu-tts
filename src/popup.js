@@ -31,7 +31,7 @@ async function loadSpeakers(engineUrl, savedSpeaker) {
 async function loadBrowserVoices(savedVoice) {
   const select = $('browserVoice');
   const voices = localJapaneseVoices(await chrome.tts.getVoices());
-  select.replaceChildren(new Option('自動（最初の日本語音声）', ''));
+  select.replaceChildren(new Option('自動（Kyoko などの標準の声）', ''));
   for (const voice of voices) select.append(new Option(voice.voiceName, voice.voiceName));
   select.value = savedVoice ?? '';
   if (voices.length === 0) {

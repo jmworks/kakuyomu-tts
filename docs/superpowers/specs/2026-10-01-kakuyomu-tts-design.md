@@ -32,7 +32,7 @@
 - ▶ を押した時点で音声エンジンに接続できなければ、Chrome の `chrome.tts` API（OS の音声。Mac なら Kyoko など）で読み上げる。ページに「VOICEVOX に接続できないため、ブラウザの音声で読み上げます」と一度表示する
 - 使う声は日本語（`lang` が `ja` で始まる）かつ `remote: false` のものに限る。Chrome の「Google 日本語」などのネットワーク音声は本文を外部に送るため使わない（プライバシー方針を守るため）
 - 日本語のローカル音声が一つも無ければ、従来どおり接続エラーを表示して止まる
-- 設定画面で「VOICEVOX が使えないときの声」を選べる（既定は最初の日本語ローカル音声）。速度は VOICEVOX と共通の値を `rate` として使う
+- 設定画面で「VOICEVOX が使えないときの声」を選べる（既定は Kyoko / Microsoft Haruka などの標準的な日本語音声。無ければ最初の日本語ローカル音声）。速度は VOICEVOX と共通の値を `rate` として使う
 - ブラウザ音声の再生は background（service worker）で `player.js` を動かして行う。合成関数は文字列をそのまま返し、再生関数が `chrome.tts.speak` を呼んで `end` / `interrupted` / `cancelled` / `error` イベントで完了とする。`permissions` に `"tts"` を追加する
 - 1 単位の読み上げ中に service worker が止まらないこと（読み上げ単位は最大 120 文字）を手動 E2E で確認する
 
@@ -98,7 +98,7 @@ content script はページ読み込み時点で「再生中」かを判定す�
 
 ## 保存データ
 
-- `chrome.storage.sync`: `{engineUrl: string, speaker: number | null, speed: number, browserVoice: string | null}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = null（エンジンの先頭話者のスタイル ID を使う）、speed = 1.0、browserVoice = null（最初の日本語ローカル音声を使う））
+- `chrome.storage.sync`: `{engineUrl: string, speaker: number | null, speed: number, browserVoice: string | null}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = null（エンジンの先頭話者のスタイル ID を使う）、speed = 1.0、browserVoice = null（標準的な日本語ローカル音声を自動で選ぶ））
 - `chrome.storage.session`: `{playback: {playingTabId: number | null, advancing: boolean}}`（ブラウザ終了で消える）
 
 ## エラー処理
