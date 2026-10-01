@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>カクヨム読み上げ</title>
+<style>
+  body { width: 320px; margin: 0; padding: 16px; font: 13px/1.5 system-ui, sans-serif; color: #222; background: #fff; }
+  h1 { font-size: 14px; margin: 0 0 12px; }
+  label { display: block; margin: 12px 0 4px; font-weight: 600; }
+  input[type=text], select { width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; }
+  input[type=range] { width: 100%; }
+  button { margin-top: 6px; font: inherit; }
+  .status { min-height: 1.5em; margin: 6px 0 0; color: #555; }
+  .note { color: #666; font-size: 12px; margin: 4px 0 0; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #eee; background: #222; }
+    .status, .note { color: #aaa; }
+  }
+</style>
+</head>
+<body>
+<h1>カクヨム読み上げ（非公式）</h1>
+
+<label for="engineUrl">音声エンジンの URL</label>
+<input id="engineUrl" type="text" spellcheck="false" autocomplete="off">
+<button id="connect" type="button">接続して声の一覧を読み込む</button>
+<p id="status" class="status" role="status"></p>
+
+<label for="speaker">声（VOICEVOX）</label>
+<select id="speaker" disabled></select>
+
+<label for="browserVoice">VOICEVOX が使えないときの声</label>
+<select id="browserVoice"></select>
+<p class="note">端末内の日本語音声だけを表示しています。</p>
+
+<label for="speed">速度 <span id="speedValue"></span></label>
+<input id="speed" type="range" min="0.5" max="2" step="0.1">
+<p class="note">設定の変更は次に ▶ を押したときから反映されます。</p>
+
+<script type="module" src="popup.js"></script>
+</body>
+</html>
