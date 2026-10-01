@@ -55,6 +55,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     player.start(msg.units, { paragraphPauseMs: settings.paragraphPause * 1000 });
   } else if (msg.type === 'stop') {
     player.stop();
+  } else if (msg.type === 'settings' && settings) {
+    // 再生中の設定変更。声・速度は次の単位から、段落の間は次の切れ目から反映する
+    const { speaker, speed, paragraphPause } = msg.settings;
+    const nextSpeaker = speaker ?? settings.speaker;
+    const voiceChanged = nextSpeaker !== settings.speaker || speed !== settings.speed;
+    settings = { ...settings, speaker: nextSpeaker, speed, paragraphPause };
+    player.setParagraphPause(paragraphPause * 1000);
+    if (voiceChanged) player.refresh();
   }
   sendResponse({});
   return false;

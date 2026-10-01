@@ -184,3 +184,23 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => handleStop(tabId));
+
+// 再生中に設定画面で声・速度・段落の間を変えたら、その場で反映する（エンジンの URL は次の ▶ から）
+chrome.storage.onChanged.addListener(async (changes, area) => {
+  if (area !== 'sync') return;
+  if (!['speaker', 'speed', 'paragraphPause', 'browserVoice'].some((key) => key in changes)) return;
+  const state = await store.get();
+  if (state.playingTabId === null) return;
+  const settings = await chrome.storage.sync.get(DEFAULTS);
+
+  if (browserSession && isCurrentPlay(state, browserSession.tabId, browserSession.playId)) {
+    const voiceName = pickVoice(await chrome.tts.getVoices(), settings.browserVoice) ?? browserSession.voiceName;
+    browserSession = { ...browserSession, voiceName, rate: settings.speed };
+    browserPlayer.setParagraphPause(settings.paragraphPause * 1000);
+  } else if (await hasOffscreen()) {
+    const { speaker, speed, paragraphPause } = settings;
+    await chrome.runtime
+      .sendMessage({ target: 'offscreen', type: 'settings', settings: { speaker, speed, paragraphPause } })
+      .catch(() => {});
+  }
+});

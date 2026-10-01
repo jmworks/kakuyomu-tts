@@ -164,6 +164,45 @@ describe('Player', () => {
     expect(onReading.mock.calls.map(([i]) => i)).toEqual([0, 0]);
   });
 
+  it('再生中に段落の間を変えると、次の段落の切れ目から新しい長さになる', async () => {
+    const { player, log, finish } = createHarness();
+    const done = player.start(units, { paragraphPauseMs: 700 });
+    await finish();
+    player.setParagraphPause(1500);
+    await finish();
+    await finish();
+    await done;
+    expect(log.filter((l) => l.startsWith('pause'))).toEqual(['pause:1500']);
+  });
+
+  it('refresh すると先読み済みの次の単位を作り直し、作り直した方を再生する', async () => {
+    const results = { b: ['old-b', 'new-b'] };
+    const played = [];
+    let finishCurrent = null;
+    const player = new Player({
+      synthesize: async (text) => (results[text] ? results[text].shift() : text),
+      play: (audio) =>
+        new Promise((resolve) => {
+          played.push(audio);
+          finishCurrent = resolve;
+        }),
+      stopAudio: () => {},
+      onReading: () => {},
+      onEnded: () => {},
+      onError: () => {},
+      sleep: async () => {},
+    });
+    const done = player.start(units);
+    await vi.waitFor(() => expect(played).toEqual(['a']));
+    player.refresh();
+    finishCurrent();
+    await vi.waitFor(() => expect(played).toEqual(['a', 'new-b']));
+    finishCurrent();
+    await vi.waitFor(() => expect(played).toEqual(['a', 'new-b', 'c']));
+    finishCurrent();
+    await done;
+  });
+
   it('単位が空ならすぐ ended', async () => {
     const { player, log } = createHarness();
     await player.start([]);
