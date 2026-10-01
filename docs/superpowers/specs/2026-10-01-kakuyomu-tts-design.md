@@ -94,19 +94,21 @@ content script はページ読み込み時点で「再生中」かを判定す�
    - 次エピソードが無い（最新話）場合は停止
 6. 遷移先ページで content.js がロード時に background に「このタブは再生中か」を問い合わせ、再生中なら冒頭（startIndex 0）から自動で play を送る
 7. 停止条件: ■ 押下 / 最新話到達 / 拡張による自動遷移以外のページ遷移（ユーザー自身の移動やリロード）/ タブを閉じる → `playingTabId` を消して offscreen の再生を止める
-   - 自動遷移の直前に content.js が `{type: "advance"}` を送り、background は「次のページ読み込みは自動遷移」と記録する。ページ読み込み開始（`tabs.onUpdated` の `status: "loading"`）時にこの記録がなければ停止する
+   - 自動遷移の直前に content.js が `{type: "advance", url}` を送り、background は遷移先を記録する。ページ読み込み開始（`tabs.onUpdated` の `status: "loading"`）時にこの記録がなければ停止する。遷移先からの問い合わせが記録と違う話だったり 60 秒を過ぎていたりしたら、再開せずに停止する
 
 ## 保存データ
 
 - `chrome.storage.sync`: `{engineUrl: string, speaker: number | null, speed: number, browserVoice: string | null}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = null（エンジンの先頭話者のスタイル ID を使う）、speed = 1.0、browserVoice = null（標準的な日本語ローカル音声を自動で選ぶ））
-- `chrome.storage.session`: `{playback: {playingTabId: number | null, advancing: boolean}}`（ブラウザ終了で消える）
+- `chrome.storage.session`: `{playback: {playingTabId: number | null, playId: number, advance: {path: string, at: number} | null}}`（ブラウザ終了で消える）。読み書きは background 内で直列化する
+  - `playId`: ▶ のたびに増える再生の世代番号。止めた後に届く古いイベントや、準備中に止められた再生を捨てるのに使う
+  - `advance`: 自動遷移の予定（遷移先のパスと時刻）。遷移先から 60 秒以内に同じパスで問い合わせが来たときだけ再開する
 
 ## エラー処理
 
 - 開始時に音声エンジンに接続できない: ブラウザ音声へフォールバック（上記）。日本語ローカル音声も無ければ停止し「VOICEVOX（音声エンジン）に接続できません。起動しているか、設定の URL を確認してください」を表示
 - 再生途中で音声エンジンに接続できなくなった: 停止して同じメッセージを表示
 - 本文コンテナが見つからない: ▶ ボタンを出さない
-- 1段落の合成に失敗: 再生停止してエラー表示（スキップはしない。原因が見えなくなるため）
+- 1段落の合成または再生に失敗: 再生停止してエラー表示（スキップはしない。原因が見えなくなるため。無音のまま次話へ進み続けるのも防ぐ）
 
 ## テスト
 

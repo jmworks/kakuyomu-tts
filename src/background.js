@@ -2,6 +2,7 @@ import { pickVoice, ttsPlay, ttsStop } from './browser-voice.js';
 import { Player } from './player.js';
 import {
   initialState,
+  isCurrentPlay,
   onAdvance,
   onPlay,
   onQuery,
@@ -9,6 +10,7 @@ import {
   onTabLoading,
 } from './playback-state.js';
 import { DEFAULTS, defaultSpeakerId } from './settings.js';
+import { createStateStore } from './state-store.js';
 import { toUtterances } from './text.js';
 import { ENGINE_UNREACHABLE, getSpeakers } from './voicevox.js';
 
@@ -17,14 +19,10 @@ const FALLBACK_NOTICE = 'VOICEVOX に接続できないため、ブラウザの�
 
 // --- 状態（service worker が止まっても消えないよう storage.session に置く） ---
 
-async function getState() {
-  const { playback } = await chrome.storage.session.get('playback');
-  return playback ?? initialState;
-}
-
-async function setState(state) {
-  await chrome.storage.session.set({ playback: state });
-}
+const store = createStateStore({
+  load: async () => (await chrome.storage.session.get('playback')).playback ?? initialState,
+  save: (state) => chrome.storage.session.set({ playback: state }),
+});
 
 function toTab(tabId, msg) {
   chrome.tabs.sendMessage(tabId, msg).catch(() => {});
@@ -37,30 +35,48 @@ async function hasOffscreen() {
   return contexts.length > 0;
 }
 
+// 作成中に別の ▶ が来ても 2 つ作ろうとしないよう、作成中の Promise を共有する
+let creatingOffscreen = null;
+
 async function ensureOffscreen() {
   if (await hasOffscreen()) return;
-  await chrome.offscreen.createDocument({
-    url: OFFSCREEN_URL,
-    reasons: ['AUDIO_PLAYBACK'],
-    justification: '小説の本文を音声エンジンで合成した音声を再生するため',
-  });
+  creatingOffscreen ??= chrome.offscreen
+    .createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['AUDIO_PLAYBACK'],
+      justification: '小説の本文を音声エンジンで合成した音声を再生するため',
+    })
+    .finally(() => {
+      creatingOffscreen = null;
+    });
+  await creatingOffscreen;
 }
 
-let browserTabId = null;
-let browserOptions = null;
+// 無音が続いた offscreen は Chrome が自動で閉じるので、送る直前に閉じられていたら 1 回だけ作り直す
+async function sendToOffscreen(msg) {
+  await ensureOffscreen();
+  try {
+    await chrome.runtime.sendMessage(msg);
+  } catch {
+    await ensureOffscreen();
+    await chrome.runtime.sendMessage(msg);
+  }
+}
+
+let browserSession = null; // { tabId, playId, voiceName, rate }
 const browserPlayer = new Player({
   synthesize: async (text) => text,
-  play: (text) => ttsPlay(text, browserOptions),
+  play: (text) => ttsPlay(text, browserSession),
   stopAudio: ttsStop,
-  onReading: (index) => handlePlayerEvent({ tabId: browserTabId, event: 'reading', index }),
-  onEnded: () => handlePlayerEvent({ tabId: browserTabId, event: 'ended' }),
-  onError: (error) => handlePlayerEvent({ tabId: browserTabId, event: 'error', message: error.message }),
+  onReading: (index) => handlePlayerEvent({ ...browserSession, event: 'reading', index }),
+  onEnded: () => handlePlayerEvent({ ...browserSession, event: 'ended' }),
+  onError: (error) => handlePlayerEvent({ ...browserSession, event: 'error', message: error.message }),
 });
 
 async function stopAudio() {
   browserPlayer.stop();
   if (await hasOffscreen()) {
-    await chrome.runtime.sendMessage({ target: 'offscreen', type: 'stop' });
+    await chrome.runtime.sendMessage({ target: 'offscreen', type: 'stop' }).catch(() => {});
   }
 }
 
@@ -81,55 +97,48 @@ async function chooseEngine(settings) {
 // --- メッセージ処理 ---
 
 async function handlePlay(tabId, { texts, startIndex }) {
-  const { state, previousTabId } = onPlay(await getState(), tabId);
-  await setState(state);
+  const { state, previousTabId } = await store.update((s) => onPlay(s, tabId));
+  const { playId } = state;
+  // 準備を待つ間に ■・リロード・別の ▶ が来ていたら、この再生は始めない
+  const stillCurrent = async () => isCurrentPlay(await store.get(), tabId, playId);
+
   await stopAudio();
   if (previousTabId !== null) toTab(previousTabId, { type: 'stopped' });
 
-  const units = toUtterances(texts, startIndex);
-  const settings = await chrome.storage.sync.get(DEFAULTS);
-  let engine;
   try {
-    engine = await chooseEngine(settings);
-  } catch (error) {
-    await handlePlayerEvent({ tabId, event: 'error', message: error.message });
-    return;
-  }
+    const units = toUtterances(texts, startIndex);
+    const engine = await chooseEngine(await chrome.storage.sync.get(DEFAULTS));
+    if (!(await stillCurrent())) return;
 
-  if (engine.kind === 'voicevox') {
-    await ensureOffscreen();
-    await chrome.runtime.sendMessage({
-      target: 'offscreen',
-      type: 'start',
-      tabId,
-      units,
-      settings: engine.settings,
-    });
-  } else {
-    toTab(tabId, { type: 'notice', message: FALLBACK_NOTICE });
-    browserTabId = tabId;
-    browserOptions = { voiceName: engine.voiceName, rate: engine.rate };
-    browserPlayer.start(units);
+    if (engine.kind === 'voicevox') {
+      await sendToOffscreen({ target: 'offscreen', type: 'start', tabId, playId, units, settings: engine.settings });
+      if (!(await stillCurrent())) await stopAudio();
+    } else {
+      toTab(tabId, { type: 'notice', message: FALLBACK_NOTICE });
+      browserSession = { tabId, playId, voiceName: engine.voiceName, rate: engine.rate };
+      browserPlayer.start(units);
+    }
+  } catch (error) {
+    await handlePlayerEvent({ tabId, playId, event: 'error', message: error.message });
   }
 }
 
 async function handleStop(tabId) {
-  const result = onStop(await getState(), tabId);
-  await setState(result.state);
+  const result = await store.update((s) => onStop(s, tabId));
   if (result.stopAudio) await stopAudio();
 }
 
-async function handlePlayerEvent({ tabId, event, index, message }) {
-  const state = await getState();
-  if (state.playingTabId !== tabId) return; // 止めた後に届いた古いイベント
-  if (event === 'reading') {
-    toTab(tabId, { type: 'reading', index });
-  } else if (event === 'ended') {
-    toTab(tabId, { type: 'episodeEnd' });
-  } else if (event === 'error') {
-    await setState(onStop(state, tabId).state);
-    toTab(tabId, { type: 'error', message });
+async function handlePlayerEvent({ tabId, playId, event, index, message }) {
+  if (event === 'error') {
+    const result = await store.update((s) =>
+      isCurrentPlay(s, tabId, playId) ? { ...onStop(s, tabId), current: true } : { state: s, current: false },
+    );
+    if (result.current) toTab(tabId, { type: 'error', message });
+    return;
   }
+  if (!isCurrentPlay(await store.get(), tabId, playId)) return; // 止めた後に届いた古いイベント
+  if (event === 'reading') toTab(tabId, { type: 'reading', index });
+  else if (event === 'ended') toTab(tabId, { type: 'episodeEnd' });
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -145,16 +154,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({});
       return false;
     case 'advance':
-      getState()
-        .then((state) => setState(onAdvance(state, tabId)))
+      store
+        .update((s) => ({ state: onAdvance(s, tabId, msg.url, Date.now()) }))
         .then(() => sendResponse({}));
       return true;
     case 'query':
-      getState().then(async (state) => {
-        const result = onQuery(state, tabId);
-        await setState(result.state);
-        sendResponse({ resume: result.resume });
-      });
+      store
+        .update((s) => onQuery(s, tabId, sender.url, Date.now()))
+        .then((result) => sendResponse({ resume: result.resume }));
       return true;
     case 'player-event':
       handlePlayerEvent(msg);
@@ -167,8 +174,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 chrome.tabs.onUpdated.addListener(async (tabId, info) => {
   if (info.status !== 'loading') return;
-  const result = onTabLoading(await getState(), tabId);
-  await setState(result.state);
+  const result = await store.update((s) => onTabLoading(s, tabId));
   if (result.stopAudio) await stopAudio();
 });
 

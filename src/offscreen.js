@@ -1,23 +1,29 @@
-import { Player } from './player.js';
+import { PLAYBACK_FAILED, Player } from './player.js';
 import { synthesize } from './voicevox.js';
 
 const audio = new Audio();
 let settings = null;
 let tabId = null;
+let playId = null;
 let finishPlay = null;
 
 function play(blob) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
-    finishPlay = () => {
+    let done = false;
+    const finish = (error) => {
+      if (done) return;
+      done = true;
       finishPlay = null;
       URL.revokeObjectURL(url);
-      resolve();
+      if (error) reject(error);
+      else resolve();
     };
-    audio.onended = () => finishPlay?.();
-    audio.onerror = () => finishPlay?.();
+    finishPlay = () => finish();
+    audio.onended = () => finish();
+    audio.onerror = () => finish(new Error(PLAYBACK_FAILED));
     audio.src = url;
-    audio.play().catch(() => finishPlay?.());
+    audio.play().catch(() => finish(new Error(PLAYBACK_FAILED)));
   });
 }
 
@@ -27,7 +33,7 @@ function stopAudio() {
 }
 
 function emit(event, extra = {}) {
-  chrome.runtime.sendMessage({ type: 'player-event', tabId, event, ...extra }).catch(() => {});
+  chrome.runtime.sendMessage({ type: 'player-event', tabId, playId, event, ...extra }).catch(() => {});
 }
 
 const player = new Player({
@@ -45,6 +51,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'start') {
     settings = msg.settings;
     tabId = msg.tabId;
+    playId = msg.playId;
     player.start(msg.units);
   } else if (msg.type === 'stop') {
     player.stop();

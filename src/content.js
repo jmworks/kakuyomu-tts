@@ -47,7 +47,7 @@ async function goNext() {
     controls.showMessage('最新話まで読み終えました');
     return;
   }
-  await chrome.runtime.sendMessage({ type: 'advance' });
+  await chrome.runtime.sendMessage({ type: 'advance', url: next });
   location.href = next;
 }
 
@@ -80,6 +80,9 @@ async function init() {
     controls.showMessage('本文が見つかりません。カクヨムのページ構造が変わった可能性があります', {
       sticky: true,
     });
+    // 自動遷移の途中ならここで止める（再生中の目印を残さない）
+    const { resume } = await chrome.runtime.sendMessage({ type: 'query' });
+    if (resume) chrome.runtime.sendMessage({ type: 'stop' });
     return;
   }
   const style = document.createElement('style');
