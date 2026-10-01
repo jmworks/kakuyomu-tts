@@ -1,3 +1,5 @@
+import { PLAYBACK_FAILED } from './player.js';
+
 // VOICEVOX が使えないときの代わりに OS の音声（chrome.tts）で読む。
 // ネットワーク音声（remote）は本文を外部に送るため使わない。
 export function localJapaneseVoices(voices) {
@@ -19,10 +21,11 @@ export function pickVoice(voices, preferredName) {
   return preferred?.voiceName ?? null;
 }
 
-const DONE_EVENTS = new Set(['end', 'interrupted', 'cancelled', 'error']);
+// interrupted / cancelled は停止したときに来る
+const DONE_EVENTS = new Set(['end', 'interrupted', 'cancelled']);
 
 export function ttsPlay(text, { voiceName, rate }) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     chrome.tts.speak(text, {
       voiceName,
       rate,
@@ -30,6 +33,7 @@ export function ttsPlay(text, { voiceName, rate }) {
       enqueue: false,
       onEvent: (event) => {
         if (DONE_EVENTS.has(event.type)) resolve();
+        else if (event.type === 'error') reject(new Error(event.errorMessage || PLAYBACK_FAILED));
       },
     });
   });

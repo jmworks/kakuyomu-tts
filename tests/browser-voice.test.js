@@ -47,7 +47,14 @@ describe('pickVoice', () => {
 describe('ttsPlay', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each(['end', 'interrupted', 'cancelled', 'error'])('%s イベントで完了する', async (type) => {
+  it('error イベントでは失敗として reject する', async () => {
+    vi.stubGlobal('chrome', {
+      tts: { speak: (text, options) => options.onEvent({ type: 'error', errorMessage: 'no voice' }) },
+    });
+    await expect(ttsPlay('本文。', { voiceName: 'Kyoko', rate: 1 })).rejects.toThrow('no voice');
+  });
+
+  it.each(['end', 'interrupted', 'cancelled'])('%s イベントで完了する', async (type) => {
     const speak = vi.fn((text, options) => {
       options.onEvent({ type: 'start' });
       options.onEvent({ type });

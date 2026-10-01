@@ -98,6 +98,26 @@ describe('Player', () => {
     expect(log).not.toContain('reading:2');
   });
 
+  it('再生に失敗したら onError で止まり、次へ進まない', async () => {
+    const onError = vi.fn();
+    const onEnded = vi.fn();
+    const onReading = vi.fn();
+    const player = new Player({
+      synthesize: async (text) => text,
+      play: async () => {
+        throw new Error('再生できない');
+      },
+      stopAudio: () => {},
+      onReading,
+      onEnded,
+      onError,
+    });
+    await player.start(units);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: '再生できない' }));
+    expect(onReading).toHaveBeenCalledTimes(1);
+    expect(onEnded).not.toHaveBeenCalled();
+  });
+
   it('単位が空ならすぐ ended', async () => {
     const { player, log } = createHarness();
     await player.start([]);

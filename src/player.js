@@ -1,5 +1,7 @@
 // 読み上げ単位を「合成 → 再生」の順に処理する。再生中に次の単位を先に合成しておく。
 // 合成・再生の手段は注入する（VOICEVOX 用と chrome.tts 用で共通に使う）。
+export const PLAYBACK_FAILED = '音声を再生できませんでした';
+
 export class Player {
   constructor({ synthesize, play, stopAudio, onReading, onEnded, onError }) {
     Object.assign(this, { synthesize, play, stopAudio, onReading, onEnded, onError });
@@ -29,7 +31,12 @@ export class Player {
       if (!isCurrent()) return;
       next = prefetch(i + 1);
       this.onReading(units[i].index);
-      await this.play(audio);
+      try {
+        await this.play(audio);
+      } catch (error) {
+        if (isCurrent()) this.onError(error);
+        return;
+      }
       if (!isCurrent()) return;
     }
     this.onEnded();
