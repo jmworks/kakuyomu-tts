@@ -2,6 +2,7 @@ export const DEFAULTS = {
   engineUrl: 'http://127.0.0.1:50021',
   speaker: null,
   speed: 1.0,
+  paragraphPause: 0.7, // 段落の間の無音（秒）
   browserVoice: null,
 };
 

@@ -2,13 +2,16 @@
 // 合成・再生の手段は注入する（VOICEVOX 用と chrome.tts 用で共通に使う）。
 export const PLAYBACK_FAILED = '音声を再生できませんでした';
 
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export class Player {
-  constructor({ synthesize, play, stopAudio, onReading, onEnded, onError }) {
-    Object.assign(this, { synthesize, play, stopAudio, onReading, onEnded, onError });
+  constructor({ synthesize, play, stopAudio, onReading, onEnded, onError, sleep = defaultSleep }) {
+    Object.assign(this, { synthesize, play, stopAudio, onReading, onEnded, onError, sleep });
     this.session = 0;
   }
 
-  async start(units) {
+  // paragraphPauseMs: 段落が変わるところで空ける無音の長さ（同じ段落を分割した部分の間には空けない）
+  async start(units, { paragraphPauseMs = 0 } = {}) {
     this.stop();
     const session = this.session;
     const isCurrent = () => session === this.session;
@@ -38,6 +41,11 @@ export class Player {
         return;
       }
       if (!isCurrent()) return;
+      const paragraphEnds = i + 1 < units.length && units[i + 1].index !== units[i].index;
+      if (paragraphEnds && paragraphPauseMs > 0) {
+        await this.sleep(paragraphPauseMs);
+        if (!isCurrent()) return;
+      }
     }
     this.onEnded();
   }

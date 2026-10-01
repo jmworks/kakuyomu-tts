@@ -107,7 +107,8 @@ async function handlePlay(tabId, { texts, startIndex }) {
 
   try {
     const units = toUtterances(texts, startIndex);
-    const engine = await chooseEngine(await chrome.storage.sync.get(DEFAULTS));
+    const settings = await chrome.storage.sync.get(DEFAULTS);
+    const engine = await chooseEngine(settings);
     if (!(await stillCurrent())) return;
 
     if (engine.kind === 'voicevox') {
@@ -116,7 +117,7 @@ async function handlePlay(tabId, { texts, startIndex }) {
     } else {
       toTab(tabId, { type: 'notice', message: FALLBACK_NOTICE });
       browserSession = { tabId, playId, voiceName: engine.voiceName, rate: engine.rate };
-      browserPlayer.start(units);
+      browserPlayer.start(units, { paragraphPauseMs: settings.paragraphPause * 1000 });
     }
   } catch (error) {
     await handlePlayerEvent({ tabId, playId, event: 'error', message: error.message });

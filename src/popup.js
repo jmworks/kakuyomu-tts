@@ -44,11 +44,17 @@ function showSpeed(speed) {
   $('speedValue').textContent = `×${speed.toFixed(1)}`;
 }
 
+function showParagraphPause(seconds) {
+  $('paragraphPauseValue').textContent = `${seconds.toFixed(1)} 秒`;
+}
+
 async function main() {
   const settings = await chrome.storage.sync.get(DEFAULTS);
   $('engineUrl').value = settings.engineUrl;
   $('speed').value = String(settings.speed);
   showSpeed(settings.speed);
+  $('paragraphPause').value = String(settings.paragraphPause);
+  showParagraphPause(settings.paragraphPause);
 
   $('connect').addEventListener('click', async () => {
     const url = normalizeEngineUrl($('engineUrl').value);
@@ -68,6 +74,10 @@ async function main() {
   );
   $('speed').addEventListener('input', () => showSpeed(Number($('speed').value)));
   $('speed').addEventListener('change', () => save({ speed: Number($('speed').value) }));
+  $('paragraphPause').addEventListener('input', () => showParagraphPause(Number($('paragraphPause').value)));
+  $('paragraphPause').addEventListener('change', () =>
+    save({ paragraphPause: Number($('paragraphPause').value) }),
+  );
 
   await Promise.all([loadSpeakers(settings.engineUrl, settings.speaker), loadBrowserVoices(settings.browserVoice)]);
 }

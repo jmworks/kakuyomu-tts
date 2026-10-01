@@ -52,7 +52,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     settings = msg.settings;
     tabId = msg.tabId;
     playId = msg.playId;
-    player.start(msg.units);
+    player.start(msg.units, { paragraphPauseMs: settings.paragraphPause * 1000 });
   } else if (msg.type === 'stop') {
     player.stop();
   }

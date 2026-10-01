@@ -25,6 +25,7 @@ function createHarness({ failOn } = {}) {
     onReading: vi.fn((index) => log.push(`reading:${index}`)),
     onEnded: vi.fn(() => log.push('ended')),
     onError: vi.fn((e) => log.push(`error:${e.message}`)),
+    sleep: vi.fn(async (ms) => log.push(`pause:${ms}`)),
   });
   const finish = async () => {
     await vi.waitFor(() => expect(finishCurrent).not.toBeNull());
@@ -116,6 +117,51 @@ describe('Player', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: '再生できない' }));
     expect(onReading).toHaveBeenCalledTimes(1);
     expect(onEnded).not.toHaveBeenCalled();
+  });
+
+  it('段落が変わるところでだけ間を空ける（同じ段落の分割部分や最後の後には空けない）', async () => {
+    const { player, log, finish } = createHarness();
+    const done = player.start(units, { paragraphPauseMs: 700 });
+    await finish();
+    await finish();
+    await finish();
+    await done;
+    expect(log.filter((l) => /^(play|pause)/.test(l))).toEqual([
+      'play:audio:a',
+      'play:audio:b',
+      'pause:700',
+      'play:audio:c',
+    ]);
+  });
+
+  it('間の長さが 0 なら待たない', async () => {
+    const { player, log, finish } = createHarness();
+    const done = player.start(units, { paragraphPauseMs: 0 });
+    await finish();
+    await finish();
+    await finish();
+    await done;
+    expect(log.some((l) => l.startsWith('pause'))).toBe(false);
+  });
+
+  it('間を空けている最中に止めたら次の段落へ進まない', async () => {
+    let releasePause;
+    const onReading = vi.fn();
+    const player = new Player({
+      synthesize: async (text) => text,
+      play: async () => {},
+      stopAudio: () => {},
+      onReading,
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+      sleep: () => new Promise((resolve) => (releasePause = resolve)),
+    });
+    const done = player.start(units, { paragraphPauseMs: 700 });
+    await vi.waitFor(() => expect(releasePause).toBeDefined());
+    player.stop();
+    releasePause();
+    await done;
+    expect(onReading.mock.calls.map(([i]) => i)).toEqual([0, 0]);
   });
 
   it('単位が空ならすぐ ended', async () => {
