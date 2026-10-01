@@ -26,7 +26,6 @@
 - 固定表示のエラーが再開後も残る
 - CPU 版 VOICEVOX で初回合成が 30 秒近いと offscreen が自動で閉じうる
 - `web_accessible_resources` の `src/*.js` でカクヨム側から拡張の存在が分かる
-- 拡張更新後の古いページで `sendMessage` が未処理例外になる
 
 ## レビュー
 

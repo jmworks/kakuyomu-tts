@@ -1,4 +1,5 @@
 import { createControls } from './controls.js';
+import { createSender } from './messenger.js';
 import {
   extractParagraphs,
   findEpisodeBody,
@@ -8,6 +9,7 @@ import {
 } from './episode.js';
 
 const HIGHLIGHT_CLASS = 'kakuyomu-tts-reading';
+const RELOAD_NEEDED = '拡張機能が更新されました。このページを再読み込みしてから、もう一度お試しください';
 
 let paragraphs = [];
 let current = null;
@@ -15,8 +17,17 @@ let current = null;
 const controls = createControls({
   onPlay: () => play(findStartIndex(paragraphs)),
   onStop: stop,
-  onSettings: () => chrome.runtime.sendMessage({ type: 'openSettings', work: findWork(document) }),
+  onSettings: () => send({ type: 'openSettings', work: findWork(document) }),
 });
+
+const send = createSender(
+  () => globalThis.chrome?.runtime,
+  () => {
+    controls.setPlaying(false);
+    clearHighlight();
+    controls.showMessage(RELOAD_NEEDED, { sticky: true });
+  },
+);
 
 function highlight(index) {
   current?.classList.remove(HIGHLIGHT_CLASS);
@@ -32,17 +43,18 @@ function clearHighlight() {
 }
 
 function play(startIndex) {
-  chrome.runtime.sendMessage({
+  // 送れなかったときに send が ▶ に戻すので、先に ■ にしておく
+  controls.setPlaying(true);
+  send({
     type: 'play',
     texts: paragraphs.map((p) => p.text),
     startIndex,
     workId: findWork(document)?.workId ?? null,
   });
-  controls.setPlaying(true);
 }
 
 function stop() {
-  chrome.runtime.sendMessage({ type: 'stop' });
+  send({ type: 'stop' });
   controls.setPlaying(false);
   clearHighlight();
 }
@@ -54,7 +66,7 @@ async function goNext() {
     controls.showMessage('最新話まで読み終えました');
     return;
   }
-  await chrome.runtime.sendMessage({ type: 'advance', url: next });
+  if (!(await send({ type: 'advance', url: next }))) return;
   location.href = next;
 }
 
@@ -92,8 +104,8 @@ async function init() {
       sticky: true,
     });
     // 自動遷移の途中ならここで止める（再生中の目印を残さない）
-    const { resume } = await chrome.runtime.sendMessage({ type: 'query' });
-    if (resume) chrome.runtime.sendMessage({ type: 'stop' });
+    const response = await send({ type: 'query' });
+    if (response?.resume) send({ type: 'stop' });
     return;
   }
   const style = document.createElement('style');
@@ -101,8 +113,8 @@ async function init() {
   document.head.append(style);
   paragraphs = extractParagraphs(document);
 
-  const { resume } = await chrome.runtime.sendMessage({ type: 'query' });
-  if (resume) play(0);
+  const response = await send({ type: 'query' });
+  if (response?.resume) play(0);
 }
 
 init();
