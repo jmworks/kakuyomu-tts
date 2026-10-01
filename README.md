@@ -18,10 +18,12 @@
 
 ## 導入手順
 
-1. [Releases](../../releases)から`kakuyomu-tts.zip`をダウンロードし、展開してください。
+1. [kakuyomu-tts.zip](https://github.com/jmworks/kakuyomu-tts/releases/latest/download/kakuyomu-tts.zip)をダウンロードし、展開してください。過去の版は[Releases](https://github.com/jmworks/kakuyomu-tts/releases)にあります。
 2. Chromeで`chrome://extensions`を開いてください。
 3. 右上の「デベロッパーモード」をオンにしてください。
 4. 「パッケージ化されていない拡張機能を読み込む」を押し、展開したフォルダを選んでください。
+
+新しい版に更新するときは、新しいzipを同じフォルダに上書きで展開し、`chrome://extensions`でこの拡張の更新ボタン（↻）を押してから、開いているカクヨムのページを再読み込みしてください。
 
 ## 使い方
 
