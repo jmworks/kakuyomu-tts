@@ -4,6 +4,7 @@ import {
   findEpisodeBody,
   findNextEpisodeUrl,
   findStartIndex,
+  findWork,
 } from './episode.js';
 
 const HIGHLIGHT_CLASS = 'kakuyomu-tts-reading';
@@ -14,7 +15,7 @@ let current = null;
 const controls = createControls({
   onPlay: () => play(findStartIndex(paragraphs)),
   onStop: stop,
-  onSettings: () => chrome.runtime.sendMessage({ type: 'openSettings' }),
+  onSettings: () => chrome.runtime.sendMessage({ type: 'openSettings', work: findWork(document) }),
 });
 
 function highlight(index) {
@@ -31,7 +32,12 @@ function clearHighlight() {
 }
 
 function play(startIndex) {
-  chrome.runtime.sendMessage({ type: 'play', texts: paragraphs.map((p) => p.text), startIndex });
+  chrome.runtime.sendMessage({
+    type: 'play',
+    texts: paragraphs.map((p) => p.text),
+    startIndex,
+    workId: findWork(document)?.workId ?? null,
+  });
   controls.setPlaying(true);
 }
 
@@ -52,8 +58,12 @@ async function goNext() {
   location.href = next;
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   switch (msg.type) {
+    case 'getWork':
+      // 設定画面が、いま開いている作品の辞書を表示するために問い合わせる
+      sendResponse(findWork(document));
+      break;
     case 'reading':
       highlight(msg.index);
       break;

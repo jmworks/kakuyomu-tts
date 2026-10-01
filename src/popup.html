@@ -7,7 +7,8 @@
   body { width: 320px; margin: 0 auto; padding: 16px; font: 13px/1.5 system-ui, sans-serif; color: #222; background: #fff; }
   h1 { font-size: 14px; margin: 0 0 12px; }
   label { display: block; margin: 12px 0 4px; font-weight: 600; }
-  input[type=text], select { width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; }
+  input[type=text], select, textarea { width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; }
+  h2 { font-size: 13px; margin: 20px 0 4px; padding-top: 12px; border-top: 1px solid #ddd; }
   input[type=range] { width: 100%; }
   button { margin-top: 6px; font: inherit; }
   .status { min-height: 1.5em; margin: 6px 0 0; color: #555; }
@@ -38,7 +39,22 @@
 <label for="paragraphPause">段落の間 <span id="paragraphPauseValue"></span></label>
 <input id="paragraphPause" type="range" min="0" max="2" step="0.1">
 
-<p class="note">声・速度・段落の間は、読み上げ中でも次の文から反映されます。音声エンジンの URL は次に ▶ を押したときから反映されます。</p>
+<h2>読み方の辞書</h2>
+<p class="note">1 行に 1 語、「表記:読み」の形で書きます（例: 我:われ）。表記の前後に漢字が続く場合は熟語の一部とみなして置き換えません。熟語ごと登録した場合はそちらが優先されます。</p>
+
+<div id="workSection" hidden>
+  <label for="dictWork">この作品の辞書</label>
+  <p id="workTitle" class="note"></p>
+  <textarea id="dictWork" rows="6" spellcheck="false" placeholder="我:われ"></textarea>
+  <p id="dictWorkCount" class="note"></p>
+</div>
+<p id="noWorkNote" class="note" hidden>作品のページで ⚙ を押すか、作品のページを開いた状態でツールバーの拡張アイコンを押すと、その作品だけの辞書も編集できます。</p>
+
+<label for="dictGlobal">全体の辞書（すべての作品）</label>
+<textarea id="dictGlobal" rows="6" spellcheck="false" placeholder="お主:おぬし"></textarea>
+<p id="dictGlobalCount" class="note"></p>
+
+<p class="note">声・速度・段落の間・辞書は、読み上げ中でも次の文から反映されます。音声エンジンの URL は次に ▶ を押したときから反映されます。同じ表記が両方の辞書にあるときは、作品の辞書を使います。</p>
 
 <script type="module" src="popup.js"></script>
 </body>

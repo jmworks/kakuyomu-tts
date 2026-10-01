@@ -1,4 +1,5 @@
 import { pickVoice, ttsPlay, ttsStop } from './browser-voice.js';
+import { applyDictionary, mergeDictionaries, parseDictionary } from './dictionary.js';
 import { Player } from './player.js';
 import {
   initialState,
@@ -63,10 +64,19 @@ async function sendToOffscreen(msg) {
   }
 }
 
-let browserSession = null; // { tabId, playId, voiceName, rate }
+// 読み方の辞書（全体 + 作品ごと）。作品ごとの方が優先される
+async function loadDictionary(workId) {
+  const { dictGlobal = '', dictWorks = {} } = await chrome.storage.local.get(['dictGlobal', 'dictWorks']);
+  return mergeDictionaries(parseDictionary(dictGlobal), parseDictionary(dictWorks[workId]?.text ?? ''));
+}
+
+// 再生中の作品（辞書の変更をその場で反映するため）
+let currentWork = null; // { tabId, playId, workId }
+
+let browserSession = null; // { tabId, playId, voiceName, rate, dictionary }
 const browserPlayer = new Player({
   synthesize: async (text) => text,
-  play: (text) => ttsPlay(text, browserSession),
+  play: (text) => ttsPlay(applyDictionary(text, browserSession.dictionary), browserSession),
   stopAudio: ttsStop,
   onReading: (index) => handlePlayerEvent({ ...browserSession, event: 'reading', index }),
   onEnded: () => handlePlayerEvent({ ...browserSession, event: 'ended' }),
@@ -96,7 +106,7 @@ async function chooseEngine(settings) {
 
 // --- メッセージ処理 ---
 
-async function handlePlay(tabId, { texts, startIndex }) {
+async function handlePlay(tabId, { texts, startIndex, workId }) {
   const { state, previousTabId } = await store.update((s) => onPlay(s, tabId));
   const { playId } = state;
   // 準備を待つ間に ■・リロード・別の ▶ が来ていたら、この再生は始めない
@@ -108,15 +118,24 @@ async function handlePlay(tabId, { texts, startIndex }) {
   try {
     const units = toUtterances(texts, startIndex);
     const settings = await chrome.storage.sync.get(DEFAULTS);
+    const dictionary = await loadDictionary(workId);
     const engine = await chooseEngine(settings);
     if (!(await stillCurrent())) return;
+    currentWork = { tabId, playId, workId };
 
     if (engine.kind === 'voicevox') {
-      await sendToOffscreen({ target: 'offscreen', type: 'start', tabId, playId, units, settings: engine.settings });
+      await sendToOffscreen({
+        target: 'offscreen',
+        type: 'start',
+        tabId,
+        playId,
+        units,
+        settings: { ...engine.settings, dictionary },
+      });
       if (!(await stillCurrent())) await stopAudio();
     } else {
       toTab(tabId, { type: 'notice', message: FALLBACK_NOTICE });
-      browserSession = { tabId, playId, voiceName: engine.voiceName, rate: engine.rate };
+      browserSession = { tabId, playId, voiceName: engine.voiceName, rate: engine.rate, dictionary };
       browserPlayer.start(units, { paragraphPauseMs: settings.paragraphPause * 1000 });
     }
   } catch (error) {
@@ -164,10 +183,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         .update((s) => onQuery(s, tabId, sender.url, Date.now()))
         .then((result) => sendResponse({ resume: result.resume }));
       return true;
-    case 'openSettings':
-      chrome.runtime.openOptionsPage();
+    case 'openSettings': {
+      // 作品のページから開いたときは、その作品の辞書を編集できるよう作品情報を渡す
+      const params = new URLSearchParams(msg.work ? { work: msg.work.workId, title: msg.work.title ?? '' } : {});
+      chrome.tabs.create({ url: `${chrome.runtime.getURL('src/popup.html')}?${params}` });
       sendResponse({});
       return false;
+    }
     case 'player-event':
       handlePlayerEvent(msg);
       sendResponse({});
@@ -185,22 +207,32 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => handleStop(tabId));
 
-// 再生中に設定画面で声・速度・段落の間を変えたら、その場で反映する（エンジンの URL は次の ▶ から）
+// 再生中に設定画面で声・速度・段落の間・辞書を変えたら、その場で反映する（エンジンの URL は次の ▶ から）
+const LIVE_KEYS = {
+  sync: ['speaker', 'speed', 'paragraphPause', 'browserVoice'],
+  local: ['dictGlobal', 'dictWorks'],
+};
+
 chrome.storage.onChanged.addListener(async (changes, area) => {
-  if (area !== 'sync') return;
-  if (!['speaker', 'speed', 'paragraphPause', 'browserVoice'].some((key) => key in changes)) return;
+  if (!LIVE_KEYS[area]?.some((key) => key in changes)) return;
   const state = await store.get();
   if (state.playingTabId === null) return;
+  if (!currentWork || !isCurrentPlay(state, currentWork.tabId, currentWork.playId)) return;
   const settings = await chrome.storage.sync.get(DEFAULTS);
+  const dictionary = await loadDictionary(currentWork.workId);
 
   if (browserSession && isCurrentPlay(state, browserSession.tabId, browserSession.playId)) {
     const voiceName = pickVoice(await chrome.tts.getVoices(), settings.browserVoice) ?? browserSession.voiceName;
-    browserSession = { ...browserSession, voiceName, rate: settings.speed };
+    browserSession = { ...browserSession, voiceName, rate: settings.speed, dictionary };
     browserPlayer.setParagraphPause(settings.paragraphPause * 1000);
   } else if (await hasOffscreen()) {
     const { speaker, speed, paragraphPause } = settings;
     await chrome.runtime
-      .sendMessage({ target: 'offscreen', type: 'settings', settings: { speaker, speed, paragraphPause } })
+      .sendMessage({
+        target: 'offscreen',
+        type: 'settings',
+        settings: { speaker, speed, paragraphPause, dictionary },
+      })
       .catch(() => {});
   }
 });

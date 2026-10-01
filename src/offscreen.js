@@ -1,4 +1,5 @@
 import { PLAYBACK_FAILED, Player } from './player.js';
+import { applyDictionary } from './dictionary.js';
 import { synthesize } from './voicevox.js';
 
 const audio = new Audio();
@@ -37,7 +38,8 @@ function emit(event, extra = {}) {
 }
 
 const player = new Player({
-  synthesize: (text) => synthesize(settings.engineUrl, text, settings.speaker, settings.speed),
+  synthesize: (text) =>
+    synthesize(settings.engineUrl, applyDictionary(text, settings.dictionary), settings.speaker, settings.speed),
   play,
   stopAudio,
   onReading: (index) => emit('reading', { index }),
@@ -56,11 +58,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } else if (msg.type === 'stop') {
     player.stop();
   } else if (msg.type === 'settings' && settings) {
-    // 再生中の設定変更。声・速度は次の単位から、段落の間は次の切れ目から反映する
-    const { speaker, speed, paragraphPause } = msg.settings;
+    // 再生中の設定変更。声・速度・辞書は次の単位から、段落の間は次の切れ目から反映する
+    const { speaker, speed, paragraphPause, dictionary } = msg.settings;
     const nextSpeaker = speaker ?? settings.speaker;
-    const voiceChanged = nextSpeaker !== settings.speaker || speed !== settings.speed;
-    settings = { ...settings, speaker: nextSpeaker, speed, paragraphPause };
+    const voiceChanged =
+      nextSpeaker !== settings.speaker ||
+      speed !== settings.speed ||
+      JSON.stringify(dictionary) !== JSON.stringify(settings.dictionary);
+    settings = { ...settings, speaker: nextSpeaker, speed, paragraphPause, dictionary };
     player.setParagraphPause(paragraphPause * 1000);
     if (voiceChanged) player.refresh();
   }

@@ -1,4 +1,5 @@
 import { localJapaneseVoices } from './browser-voice.js';
+import { parseDictionary } from './dictionary.js';
 import { DEFAULTS, defaultSpeakerId, normalizeEngineUrl } from './settings.js';
 import { getSpeakers } from './voicevox.js';
 
@@ -48,6 +49,62 @@ function showParagraphPause(seconds) {
   $('paragraphPauseValue').textContent = `${seconds.toFixed(1)} 秒`;
 }
 
+// どの作品の辞書を編集するか。⚙ から開いたときは URL に、ツールバーから開いたときは開いているタブに聞く
+async function currentWork() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('work')) return { workId: params.get('work'), title: params.get('title') || null };
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return null;
+  return chrome.tabs.sendMessage(tab.id, { type: 'getWork' }).catch(() => null);
+}
+
+function showCount(id, text) {
+  $(id).textContent = `${parseDictionary(text).length} 語を登録しています`;
+}
+
+// 入力が止まってから保存する
+function debounce(fn, ms) {
+  let timer = null;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+}
+
+async function setupDictionaries() {
+  const { dictGlobal = '', dictWorks = {} } = await chrome.storage.local.get(['dictGlobal', 'dictWorks']);
+  $('dictGlobal').value = dictGlobal;
+  showCount('dictGlobalCount', dictGlobal);
+  $('dictGlobal').addEventListener('input', () => showCount('dictGlobalCount', $('dictGlobal').value));
+  $('dictGlobal').addEventListener(
+    'input',
+    debounce(() => chrome.storage.local.set({ dictGlobal: $('dictGlobal').value }), 400),
+  );
+
+  const work = await currentWork();
+  if (!work) {
+    $('noWorkNote').hidden = false;
+    return;
+  }
+  const saved = dictWorks[work.workId];
+  const title = work.title ?? saved?.title ?? `作品 ID ${work.workId}`;
+  $('workSection').hidden = false;
+  $('workTitle').textContent = title;
+  $('dictWork').value = saved?.text ?? '';
+  showCount('dictWorkCount', $('dictWork').value);
+  $('dictWork').addEventListener('input', () => showCount('dictWorkCount', $('dictWork').value));
+  $('dictWork').addEventListener(
+    'input',
+    debounce(async () => {
+      const { dictWorks: latest = {} } = await chrome.storage.local.get('dictWorks');
+      const text = $('dictWork').value;
+      if (text.trim() === '') delete latest[work.workId];
+      else latest[work.workId] = { title, text };
+      await chrome.storage.local.set({ dictWorks: latest });
+    }, 400),
+  );
+}
+
 async function main() {
   const settings = await chrome.storage.sync.get(DEFAULTS);
   $('engineUrl').value = settings.engineUrl;
@@ -79,7 +136,11 @@ async function main() {
     save({ paragraphPause: Number($('paragraphPause').value) }),
   );
 
-  await Promise.all([loadSpeakers(settings.engineUrl, settings.speaker), loadBrowserVoices(settings.browserVoice)]);
+  await Promise.all([
+    loadSpeakers(settings.engineUrl, settings.speaker),
+    loadBrowserVoices(settings.browserVoice),
+    setupDictionaries(),
+  ]);
 }
 
 main();
