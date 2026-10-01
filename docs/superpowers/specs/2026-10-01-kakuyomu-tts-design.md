@@ -22,9 +22,19 @@
 
 - 読み位置の保存・再開
 - 拡張独自の読み辞書
-- VOICEVOX 以外の音声エンジン（Web Speech API へのフォールバック含む）
+- VOICEVOX 互換エンジンとブラウザ音声以外の音声エンジン（クラウド TTS など）
+- 再生途中で VOICEVOX が落ちたときのブラウザ音声への切り替え（開始時のみ判定し、途中で落ちたらエラー停止）
 - iPhone 等モバイル対応
 - UI の多言語化（カクヨム利用者向けなので日本語のみ）
+
+## フォールバック（VOICEVOX が無い・起動していない場合）
+
+- ▶ を押した時点で音声エンジンに接続できなければ、Chrome の `chrome.tts` API（OS の音声。Mac なら Kyoko など）で読み上げる。ページに「VOICEVOX に接続できないため、ブラウザの音声で読み上げます」と一度表示する
+- 使う声は日本語（`lang` が `ja` で始まる）かつ `remote: false` のものに限る。Chrome の「Google 日本語」などのネットワーク音声は本文を外部に送るため使わない（プライバシー方針を守るため）
+- 日本語のローカル音声が一つも無ければ、従来どおり接続エラーを表示して止まる
+- 設定画面で「VOICEVOX が使えないときの声」を選べる（既定は最初の日本語ローカル音声）。速度は VOICEVOX と共通の値を `rate` として使う
+- ブラウザ音声の再生は background（service worker）で `player.js` を動かして行う。合成関数は文字列をそのまま返し、再生関数が `chrome.tts.speak` を呼んで `end` / `interrupted` / `cancelled` / `error` イベントで完了とする。`permissions` に `"tts"` を追加する
+- 1 単位の読み上げ中に service worker が止まらないこと（読み上げ単位は最大 120 文字）を手動 E2E で確認する
 
 ## 公開に向けた方針
 
@@ -56,15 +66,20 @@ Chrome 拡張（Manifest V3）、ビルド不要の素の JavaScript（ES module
 
 | ファイル | 役割 |
 |---|---|
-| `manifest.json` | content script を `https://kakuyomu.jp/works/*/episodes/*` に注入。`host_permissions: ["http://127.0.0.1/*", "http://localhost/*"]`（ポート違いのエンジンに対応するため。match pattern がポートを無視することは実装時に検証する）、`permissions: ["storage", "offscreen"]` |
+| `manifest.json` | content script を `https://kakuyomu.jp/works/*/episodes/*` に注入。`host_permissions: ["http://127.0.0.1/*", "http://localhost/*"]`（ポート違いのエンジンに対応するため。match pattern がポートを無視することは実装時に検証する）、`permissions: ["storage", "offscreen", "tts"]` |
 | `src/content.js` | ページ内UI（右下の ▶/■ ボタン、エラー表示）、段落抽出、開始段落判定、読み上げ中段落のハイライトと自動スクロール、次エピソードへの遷移、ページロード時の自動再開 |
 | `src/episode.js` | DOM 純粋関数群（`extractParagraphs`, `findStartIndex`, `findNextEpisodeUrl`）。content.js から import し、テスト対象にする |
-| `src/background.js` | Service worker。VOICEVOX 呼び出し（`/audio_query` → `/synthesis`）、1段落先の先読み、offscreen document の生成と再生指示、再生状態の管理 |
+| `src/background.js` | Service worker。再生状態の管理（どのタブが再生中か）、設定の読み込み、offscreen document の生成、content script と offscreen の間のメッセージ中継 |
+| `src/playback-state.js` | 再生状態の遷移を表す純粋関数群（テスト対象） |
+| `src/text.js` | 段落を読み上げ単位に分割（長い段落を文で区切る、記号だけの段落を除く） |
+| `src/player.js` | 読み上げ単位を順に「合成→再生」し、次の単位を先読みするキュー（合成・再生関数を注入してテスト可能にする） |
+| `src/settings.js` | 設定の既定値、エンジン URL の正規化 |
 | `src/voicevox.js` | VOICEVOX API クライアント（`getSpeakers`, `synthesize(text, speaker, speed)`） |
-| `src/offscreen.html` / `offscreen.js` | WAV を `Audio` で再生し、終了を background に通知 |
+| `src/offscreen.html` / `offscreen.js` | `player.js` を動かす。VOICEVOX で合成した WAV を `Audio` で再生し、読み上げ位置・終了・エラーを background に通知 |
+| `src/controls.js` | ページ右下の ▶/■ ボタンとメッセージ表示（Shadow DOM でカクヨムの CSS と隔離） |
 | `src/popup.html` / `popup.js` | 話者選択（`/speakers` から取得）、速度（`speedScale`）設定、エンジン URL 設定と接続テスト |
 
-VOICEVOX との通信を background に集約する理由: カクヨムのオリジンから `127.0.0.1:50021` へ直接 fetch すると CORS で拒否される可能性が高い。拡張コンテキストは `host_permissions` で CORS を回避できる。
+VOICEVOX との通信を拡張側（offscreen / background / popup）で行う理由: カクヨムのオリジンから `127.0.0.1:50021` へ直接 fetch すると CORS で拒否される可能性が高い。拡張のページは `host_permissions` で CORS を回避できる。
 再生を offscreen に置く理由: 再生処理を拡張コンテキスト内で完結させ、ページ側の制約に影響されないようにする。
 
 content script はページ読み込み時点で「再生中」かを判定する必要があるため、content.js は ES module を動的 import するローダー経由で読み込む（MV3 の content script は直接 ESM にできない）。
@@ -73,21 +88,23 @@ content script はページ読み込み時点で「再生中」かを判定す�
 
 1. ユーザーが ▶ を押す
 2. content.js: `findStartIndex` で画面最上部の段落を決定し、それ以降の段落テキスト配列を `{type: "play", paragraphs, startIndex}` として background に送る
-3. background: `chrome.storage.session` に `{playingTabId}` を保存。段落を順に `synthesize` → offscreen で再生。再生中に次段落を先に合成しておく。各段落の再生開始時に `{type: "reading", index}` を content.js に送る
+3. background: `chrome.storage.session` に再生中タブを保存し、設定を読み込み、段落を読み上げ単位に分けて offscreen に渡す。offscreen が単位ごとに合成→再生し、再生中に次の単位を先に合成しておく。各単位の再生開始時に段落番号が background 経由で `{type: "reading", index}` として content.js に届く
 4. content.js: 該当段落をハイライトし `scrollIntoView({block: "center"})`
 5. 全段落終了 → background が `{type: "episodeEnd"}` を送る → content.js が `findNextEpisodeUrl` の URL へ `location.href` で遷移
    - 次エピソードが無い（最新話）場合は停止
 6. 遷移先ページで content.js がロード時に background に「このタブは再生中か」を問い合わせ、再生中なら冒頭（startIndex 0）から自動で play を送る
-7. 停止条件: ■ 押下 / 最新話到達 / 再生中タブがエピソード以外のページへ遷移 / タブを閉じる → `playingTabId` を消して offscreen の再生を止める
+7. 停止条件: ■ 押下 / 最新話到達 / 拡張による自動遷移以外のページ遷移（ユーザー自身の移動やリロード）/ タブを閉じる → `playingTabId` を消して offscreen の再生を止める
+   - 自動遷移の直前に content.js が `{type: "advance"}` を送り、background は「次のページ読み込みは自動遷移」と記録する。ページ読み込み開始（`tabs.onUpdated` の `status: "loading"`）時にこの記録がなければ停止する
 
 ## 保存データ
 
-- `chrome.storage.sync`: `{engineUrl: string, speaker: number, speed: number}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = エンジンの先頭話者のスタイル ID、speed = 1.0）
-- `chrome.storage.session`: `{playingTabId: number | null}`（ブラウザ終了で消える）
+- `chrome.storage.sync`: `{engineUrl: string, speaker: number | null, speed: number, browserVoice: string | null}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = null（エンジンの先頭話者のスタイル ID を使う）、speed = 1.0、browserVoice = null（最初の日本語ローカル音声を使う））
+- `chrome.storage.session`: `{playback: {playingTabId: number | null, advancing: boolean}}`（ブラウザ終了で消える）
 
 ## エラー処理
 
-- 音声エンジンに接続できない（fetch 失敗 / タイムアウト）: 再生を停止し、ページ右下に「VOICEVOX（音声エンジン）に接続できません。起動しているか、設定の URL を確認してください」を表示
+- 開始時に音声エンジンに接続できない: ブラウザ音声へフォールバック（上記）。日本語ローカル音声も無ければ停止し「VOICEVOX（音声エンジン）に接続できません。起動しているか、設定の URL を確認してください」を表示
+- 再生途中で音声エンジンに接続できなくなった: 停止して同じメッセージを表示
 - 本文コンテナが見つからない: ▶ ボタンを出さない
 - 1段落の合成に失敗: 再生停止してエラー表示（スキップはしない。原因が見えなくなるため）
 
