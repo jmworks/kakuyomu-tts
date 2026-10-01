@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "カクヨム読み上げ（非公式）",
+  "version": "0.1.0",
+  "description": "カクヨムの小説を VOICEVOX で読み上げ、話の終わりで次のエピソードへ自動で進みます。カクヨム公式とは関係ありません。",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "offscreen", "tts"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://kakuyomu.jp/works/*/episodes/*"],
+      "js": ["src/content-loader.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["src/*.js"], "matches": ["https://kakuyomu.jp/*"] }
+  ],
+  "action": { "default_popup": "src/popup.html", "default_title": "カクヨム読み上げ" }
+}

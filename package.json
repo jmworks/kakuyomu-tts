@@ -1,0 +1,16 @@
+{
+  "name": "kakuyomu-tts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "カクヨムの小説を VOICEVOX で読み上げる Chrome 拡張（非公式）",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "package": "mkdir -p dist && rm -f dist/kakuyomu-tts.zip && zip -r dist/kakuyomu-tts.zip manifest.json src LICENSE"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^5.0.3"
+  }
+}
