@@ -26,9 +26,19 @@ describe('findEpisodeBody', () => {
 });
 
 describe('extractParagraphs', () => {
-  it('空行と空白だけの段落を除き、ルビは親文字だけ読む', () => {
+  it('空行と空白だけの段落を除き、ルビはふりがなで読む', () => {
     const texts = extractParagraphs(load()).map((p) => p.text);
-    expect(texts).toEqual(['吾輩はテストである。', '名前はまだ無い。', '「どこで生まれたか」']);
+    expect(texts).toEqual(['吾輩はテストである。', 'なまえはまだ無い。', '「どこで生まれたか」']);
+  });
+
+  const textOf = (inner) => extractParagraphs(load(`<div class="js-episode-body"><p>${inner}</p></div>`))[0].text;
+
+  it('rb の無いルビもふりがなで読む', () => {
+    expect(textOf('<ruby>本気<rt>マジ</rt></ruby>で言ってる')).toBe('マジで言ってる');
+  });
+
+  it('ふりがなが「・」などの記号だけ（傍点としての使い方）なら親文字を読む', () => {
+    expect(textOf('<ruby><rb>絶対</rb><rp>（</rp><rt>・・</rt><rp>）</rp></ruby>に')).toBe('絶対に');
   });
   it('要素への参照を保持する', () => {
     const [first] = extractParagraphs(load());

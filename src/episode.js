@@ -13,9 +13,21 @@ export function findEpisodeBody(doc) {
   return doc.querySelector(SELECTORS.body);
 }
 
+// 文字か数字を含むか。「・・・」だけのふりがな（傍点の代わり）は読みとして使わない
+const SPEAKABLE = /[\p{L}\p{N}]/u;
+
+// ルビはふりがなで読む。ふりがなが記号だけなら親文字を読む
+function rubyText(ruby) {
+  const reading = [...ruby.querySelectorAll('rt')].map((rt) => rt.textContent).join('');
+  if (SPEAKABLE.test(reading)) return reading;
+  const base = ruby.cloneNode(true);
+  base.querySelectorAll('rt, rp').forEach((node) => node.remove());
+  return base.textContent;
+}
+
 function paragraphText(el) {
   const clone = el.cloneNode(true);
-  clone.querySelectorAll('rt, rp').forEach((node) => node.remove());
+  clone.querySelectorAll('ruby').forEach((ruby) => ruby.replaceWith(rubyText(ruby)));
   return clone.textContent.replace(/\s+/g, ' ').trim();
 }
 
