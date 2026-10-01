@@ -35,7 +35,7 @@ describe('DEFAULTS', () => {
       engineUrl: 'http://127.0.0.1:50021',
       speaker: null,
       speed: 1.0,
-      paragraphPause: 0.7,
+      paragraphPause: 1.0,
       browserVoice: null,
     });
   });

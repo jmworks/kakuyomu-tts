@@ -98,7 +98,7 @@ content script はページ読み込み時点で「再生中」かを判定す�
 
 ## 保存データ
 
-- `chrome.storage.sync`: `{engineUrl: string, speaker: number | null, speed: number, paragraphPause: number, browserVoice: string | null}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = null（エンジンの先頭話者のスタイル ID を使う）、speed = 1.0、paragraphPause = 0.7（段落が変わるところで空ける無音の秒数。同じ段落を分割した部分の間には空けない）、browserVoice = null（標準的な日本語ローカル音声を自動で選ぶ））
+- `chrome.storage.sync`: `{engineUrl: string, speaker: number | null, speed: number, paragraphPause: number, browserVoice: string | null}`（初期値: engineUrl = `http://127.0.0.1:50021`、speaker = null（エンジンの先頭話者のスタイル ID を使う）、speed = 1.0、paragraphPause = 1.0（段落が変わるところで空ける無音の秒数。同じ段落を分割した部分の間には空けない）、browserVoice = null（標準的な日本語ローカル音声を自動で選ぶ））
 - `chrome.storage.session`: `{playback: {playingTabId: number | null, playId: number, advance: {path: string, at: number} | null}}`（ブラウザ終了で消える）。読み書きは background 内で直列化する
   - `playId`: ▶ のたびに増える再生の世代番号。止めた後に届く古いイベントや、準備中に止められた再生を捨てるのに使う
   - `advance`: 自動遷移の予定（遷移先のパスと時刻）。遷移先から 60 秒以内に同じパスで問い合わせが来たときだけ再開する
